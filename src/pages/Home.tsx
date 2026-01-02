@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { SearchBar } from "@/components/SearchBar";
@@ -7,6 +7,7 @@ import { SubjectSelector, subjects } from "@/components/SubjectSelector";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { Sparkles, TrendingUp, BookOpen } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface Video {
   id: string;
@@ -26,100 +27,9 @@ interface Profile {
   full_name: string | null;
 }
 
-// Sample videos for demo (these would normally come from YouTube API)
-const sampleVideos: Video[] = [
-  {
-    id: "1",
-    video_id: "dQw4w9WgXcQ",
-    title: "Complete Physics Chapter 1 - Physical World | Class 11 NCERT",
-    channel_title: "Physics Wallah",
-    thumbnail_url: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=640&q=80",
-    view_count: 15400000,
-    like_count: 890000,
-    duration: "1:45:30",
-    subject: "Physics",
-  },
-  {
-    id: "2",
-    video_id: "abc123",
-    title: "Calculus Basics - Limits and Derivatives | Class 12 Mathematics",
-    channel_title: "Vedantu",
-    thumbnail_url: "https://images.unsplash.com/photo-1509228468518-180dd4864904?w=640&q=80",
-    view_count: 12300000,
-    like_count: 720000,
-    duration: "2:15:00",
-    subject: "Mathematics",
-  },
-  {
-    id: "3",
-    video_id: "def456",
-    title: "Organic Chemistry - Hydrocarbons Full Chapter | Class 11",
-    channel_title: "Unacademy",
-    thumbnail_url: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=640&q=80",
-    view_count: 9800000,
-    like_count: 560000,
-    duration: "3:00:00",
-    subject: "Chemistry",
-  },
-  {
-    id: "4",
-    video_id: "ghi789",
-    title: "Cell Biology - Structure and Function | Class 11 Biology",
-    channel_title: "Biology by Suman Ma'am",
-    thumbnail_url: "https://images.unsplash.com/photo-1530026405186-ed1f139313f8?w=640&q=80",
-    view_count: 7500000,
-    like_count: 450000,
-    duration: "1:30:00",
-    subject: "Biology",
-  },
-  {
-    id: "5",
-    video_id: "jkl012",
-    title: "Integration - Complete Chapter | Class 12 Maths CBSE",
-    channel_title: "Maths By Aman Sir",
-    thumbnail_url: "https://images.unsplash.com/photo-1596495577886-d920f1fb7238?w=640&q=80",
-    view_count: 11200000,
-    like_count: 680000,
-    duration: "2:45:00",
-    subject: "Mathematics",
-  },
-  {
-    id: "6",
-    video_id: "mno345",
-    title: "Electromagnetic Induction | Class 12 Physics NCERT",
-    channel_title: "Physics Galaxy",
-    thumbnail_url: "https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=640&q=80",
-    view_count: 8900000,
-    like_count: 520000,
-    duration: "2:00:00",
-    subject: "Physics",
-  },
-  {
-    id: "7",
-    video_id: "pqr678",
-    title: "Chemical Bonding and Molecular Structure | Class 11",
-    channel_title: "Etoos Education",
-    thumbnail_url: "https://images.unsplash.com/photo-1603126857599-f6e157fa2fe6?w=640&q=80",
-    view_count: 6700000,
-    like_count: 380000,
-    duration: "2:30:00",
-    subject: "Chemistry",
-  },
-  {
-    id: "8",
-    video_id: "stu901",
-    title: "Genetics and Evolution | Class 12 Biology Complete",
-    channel_title: "NEET Prep",
-    thumbnail_url: "https://images.unsplash.com/photo-1559757175-7b21e7afb4b6?w=640&q=80",
-    view_count: 5400000,
-    like_count: 310000,
-    duration: "3:15:00",
-    subject: "Biology",
-  },
-];
-
 const Home = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -151,18 +61,44 @@ const Home = () => {
     fetchProfile();
   }, [navigate]);
 
-  useEffect(() => {
-    // Simulate fetching videos (would normally call YouTube API via edge function)
+  const fetchVideos = useCallback(async (subject: string | null) => {
     setIsLoading(true);
-    setTimeout(() => {
-      let filteredVideos = sampleVideos;
-      if (selectedSubject) {
-        filteredVideos = sampleVideos.filter((v) => v.subject === selectedSubject);
+    try {
+      const { data, error } = await supabase.functions.invoke('youtube-search', {
+        body: { 
+          subject: subject || 'education',
+          maxResults: 12
+        }
+      });
+
+      if (error) {
+        console.error('Error fetching videos:', error);
+        toast({
+          title: "Error loading videos",
+          description: "Please try again later",
+          variant: "destructive"
+        });
+        return;
       }
-      setVideos(filteredVideos);
+
+      if (data?.videos) {
+        setVideos(data.videos);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error loading videos",
+        description: "Please try again later",
+        variant: "destructive"
+      });
+    } finally {
       setIsLoading(false);
-    }, 500);
-  }, [selectedSubject]);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    fetchVideos(selectedSubject);
+  }, [selectedSubject, fetchVideos]);
 
   const handleSearch = (query: string) => {
     if (query) {
